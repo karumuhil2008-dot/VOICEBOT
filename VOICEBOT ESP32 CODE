@@ -1,0 +1,135 @@
+#include <WiFi.h>
+#include <WebServer.h>
+
+/* ---------- WiFi ---------- */
+const char* ssid = "Galaxy A16 5G";
+const char* password = "muhil1234";
+
+/* ---------- Server ---------- */
+WebServer server(80);
+
+/* ---------- L298N PINS ---------- */
+// Motor A (Left side – 2 motors)
+#define IN1 26
+#define IN2 27
+#define ENA 25   // PWM
+
+// Motor B (Right side – 2 motors)
+#define IN3 14
+#define IN4 12
+#define ENB 33   // PWM
+
+/* ---------- PWM ---------- */
+int speedPWM = 180; // 0–255
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+
+  /* PWM attach (ESP32 core 3.x) */
+  ledcAttach(ENA, 1000, 8);
+  ledcAttach(ENB, 1000, 8);
+
+  stopCar();
+
+  /* WiFi */
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected");
+  Serial.print("ESP IP: ");
+  Serial.println(WiFi.localIP());
+
+  /* Routes (MATCH WEB) */
+  server.on("/forward", moveForward);
+  server.on("/backward", moveBackward);
+  server.on("/left", turnLeft);
+  server.on("/right", turnRight);
+  server.on("/stop", stopCar);
+
+  server.begin();
+}
+
+/* ---------- LOOP ---------- */
+void loop() {
+  server.handleClient();
+}
+
+/* ---------- MOTOR FUNCTIONS ---------- */
+
+void moveForward() {
+  Serial.println("FORWARD");
+
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+
+  ledcWrite(ENA, speedPWM);
+  ledcWrite(ENB, speedPWM);
+
+  server.send(200, "text/plain", "FORWARD");
+}
+
+void moveBackward() {
+  Serial.println("BACKWARD");
+
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+
+  ledcWrite(ENA, speedPWM);
+  ledcWrite(ENB, speedPWM);
+
+  server.send(200, "text/plain", "BACKWARD");
+}
+
+void turnLeft() {
+  Serial.println("LEFT");
+
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+
+  ledcWrite(ENA, speedPWM);
+  ledcWrite(ENB, speedPWM);
+
+  server.send(200, "text/plain", "LEFT");
+}
+
+void turnRight() {
+  Serial.println("RIGHT");
+
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+
+  ledcWrite(ENA, speedPWM);
+  ledcWrite(ENB, speedPWM);
+
+  server.send(200, "text/plain", "RIGHT");
+}
+
+void stopCar() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+
+  ledcWrite(ENA, 0);
+  ledcWrite(ENB, 0);
+
+  server.send(200, "text/plain", "STOP");
+}
