@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VOICE BOT – Blue Horizon</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:'Orbitron',sans-serif;background:black;color:white}
+.hud{width:100vw;height:100vh;background:url("bg.jpg") no-repeat center/cover;display:flex;flex-direction:column;align-items:center}
+.top-title{text-align:center;margin-top:18px}
+.hud-title{font-size:56px;letter-spacing:6px;color:#00f6ff;text-shadow:0 0 10px #00f6ff,0 0 40px #00f6ff}
+.hud-sub{font-size:14px;color:#8ffcff}
+.container{display:flex;width:85%;height:70%;margin-top:30px;justify-content:space-between;align-items:center}
+.arena{position:relative;width:55%;height:100%}
+.chat-bubble{position:absolute;top:20px;left:50%;transform:translateX(-50%);padding:12px 20px;background:rgba(0,255,255,.15);border:1px solid #00f6ff;border-radius:20px}
+#robot{position:absolute;left:50%;top:60%;transform:translate(-50%,-50%);transition:.3s}
+.head{width:120px;height:90px;background:linear-gradient(145deg,#0e2a40,#061621);border-radius:30px;border:2px solid #00f6ff;display:flex;justify-content:space-around;align-items:center}
+.eye{width:14px;height:14px;background:#00f6ff;border-radius:50%}
+.body{width:80px;height:60px;margin:10px auto 0;background:linear-gradient(145deg,#071a28,#030c14);border-radius:18px;border:2px solid #00f6ff}
+.controls{display:flex;flex-direction:column;align-items:center}
+button{margin-top:14px;padding:8px 18px;border-radius:20px;background:transparent;border:1px solid #00f6ff;color:#00f6ff;cursor:pointer}
+#micBtn{width:130px;height:130px;font-size:42px;border-radius:50%;background:radial-gradient(circle at top,#00f6ff,#004b57);box-shadow:0 0 40px #00f6ff}
+#micBtn.active{animation:pulse 1.2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 20px #00f6ff}50%{box-shadow:0 0 60px #00f6ff}100%{box-shadow:0 0 20px #00f6ff}}
+#autoBtn.active{background:#00f6ff;color:black}
+#dpad{text-align:center;margin-top:18px}
+#dpad button{width:64px;height:64px;margin:6px;border-radius:16px;font-size:22px}
+.hidden{display:none}
+</style>
+</head>
+
+<body>
+<div class="hud">
+  <div class="top-title">
+    <div class="hud-title">VOICE BOT</div>
+    <div class="hud-sub">⚡ Blue Horizon AI Control System ⚡</div>
+  </div>
+
+  <div class="container">
+    <div class="arena">
+      <div class="chat-bubble" id="chat">🤖 Ready</div>
+      <div id="robot">
+        <div class="head"><div class="eye"></div><div class="eye"></div></div>
+        <div class="body"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="micBtn" onclick="toggleMic()">🎤</button>
+      <button onclick="toggleMode()">🤖 Buttons</button>
+      <button id="autoBtn" onclick="toggleAuto()">▶ AUTO MODE</button>
+
+      <div id="dpad" class="hidden">
+        <button onclick="manualMove('forward')">▲</button>
+        <div>
+          <button onclick="manualMove('left')">◀</button>
+          <button onclick="HARD_STOP()">■</button>
+          <button onclick="manualMove('right')">▶</button>
+        </div>
+        <button onclick="manualMove('backward')">▼</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ESP_IP="http://10.71.207.3";
+
+/* ---------- STATE ---------- */
+let x=0,y=0,mode="voice";
+let micOn=false,recognition;
+let auto=false,autoTimer=null;
+
+const MOVE_TIME=300;
+
+/* ---------- ELEMENTS ---------- */
+const robot=document.getElementById("robot");
+const chat=document.getElementById("chat");
+const micBtn=document.getElementById("micBtn");
+const dpad=document.getElementById("dpad");
+const autoBtn=document.getElementById("autoBtn");
+
+/* ---------- UTILS ---------- */
+function sendESP(cmd){
+  fetch(`${ESP_IP}/${cmd}`).catch(()=>{});
+}
+
+function fastSpeak(text){
+  speechSynthesis.cancel();
+  chat.textContent=text;
+  const u=new SpeechSynthesisUtterance(text);
+  u.rate=1.3;
+  speechSynthesis.speak(u);
+}
+
+/* ---------- UI MOVE (NORMAL) ---------- */
+function moveUI(dir){
+  const step=15;
+  if(dir==="forward")y-=step;
+  if(dir==="backward")y+=step;
+  if(dir==="left")x-=step;
+  if(dir==="right")x+=step;
+  robot.style.transform=`translate(-50%,-50%) translate(${x}px,${y}px)`;
+}
+
+/* ---------- HARD STOP ---------- */
+function HARD_STOP(){
+  clearInterval(autoTimer);
+  auto=false;
+  autoBtn.classList.remove("active");
+  autoBtn.textContent="▶ AUTO MODE";
+  sendESP("stop");
+  fastSpeak("Stopped");
+}
+
+/* ---------- STEP MOVE (FIXED LEFT/RIGHT) ---------- */
+function stepMove(dir){
+  if(auto) HARD_STOP();
+
+  moveUI(dir);
+
+  // 🔥 FIX: swap ESP commands
+  let espCmd=dir;
+  if(dir==="left") espCmd="right";
+  if(dir==="right") espCmd="left";
+
+  sendESP(espCmd);
+
+  setTimeout(()=>{
+    sendESP("stop");
+  }, MOVE_TIME);
+}
+
+/* ---------- BUTTON FIX ---------- */
+function manualMove(dir){
+  stepMove(dir);
+}
+
+/* ---------- MODE ---------- */
+function toggleMode(){
+  mode=mode==="voice"?"buttons":"voice";
+  dpad.classList.toggle("hidden");
+  fastSpeak(mode+" mode");
+}
+
+/* ---------- AUTO MODE ---------- */
+function toggleAuto(){
+  if(auto){
+    HARD_STOP();
+    return;
+  }
+
+  auto=true;
+  autoBtn.classList.add("active");
+  autoBtn.textContent="■ AUTO STOP";
+  fastSpeak("Auto mode");
+
+  const seq=["forward","left","right","backward"];
+  let i=0;
+
+  autoTimer=setInterval(()=>{
+    const cmd=seq[i%seq.length];
+    moveUI(cmd);
+
+    let espCmd=cmd;
+    if(cmd==="left") espCmd="right";
+    if(cmd==="right") espCmd="left";
+
+    sendESP(espCmd);
+    setTimeout(()=>sendESP("stop"), MOVE_TIME);
+    i++;
+  },1200);
+}
+
+/* ---------- MIC ---------- */
+function toggleMic(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR) return alert("Speech not supported");
+
+  if(!recognition){
+    recognition=new SR();
+    recognition.lang="en-IN";
+    recognition.continuous=true;
+
+    recognition.onresult=e=>{
+      const t=e.results[e.results.length-1][0]
+        .transcript.toLowerCase().trim();
+
+      if(t.includes("auto stop")) HARD_STOP();
+      else if(t==="stop") HARD_STOP();
+      else if(t.includes("auto")) toggleAuto();
+      else if(t.includes("forward")) stepMove("forward");
+      else if(t.includes("back")) stepMove("backward");
+      else if(t.includes("left")) stepMove("left");
+      else if(t.includes("right")) stepMove("right");
+      else fastSpeak("Command not clear");
+    };
+
+    recognition.onend=()=>micOn&&recognition.start();
+  }
+
+  micOn=!micOn;
+  micBtn.classList.toggle("active");
+  micOn?recognition.start():recognition.stop();
+}
+</script>
+
+</body>
+</html>
